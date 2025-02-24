@@ -252,3 +252,550 @@ These models primarily reveal correlations between OECD membership and trade, no
 Establishing causation requires an instrumental variable that is correlated with OECD membership but does not directly affect trade. However, it is challenging to find such an instrument, as most factors influencing OECD membership (such as economic openness) also directly impact trade. Without a valid IV, causality remains untested.
 The self-selection process for OECD membership means that member countries may already possess characteristics conducive to trade. This makes it difficult to separate the effect of OECD membership itself from the effect of these pre-existing characteristics, which likely contribute to both trade volume and OECD membership.
 
+
+# APPENDIX
+
+## Data
+
+[data.zip](https://github.com/user-attachments/files/18934540/data.zip)
+
+## CODE
+
+[Uploading Assignmen---
+title: "Gravity Model Assignment"
+author: "Seth Oduro"
+date: "2024-11-04"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Loading Necessary Libraries
+```{r}
+library(knitr)
+library(here)
+library(gridExtra)
+library(readr)
+library(stargazer)
+library(dplyr)
+library(lubridate)
+library(foreign)
+library(ggplot2)
+library(ggpubr)
+library(lmtest)
+library(sandwich)
+library(broom)
+library(car)
+library(psych)
+library(lmtest)
+library(gt)
+
+```
+
+
+```{r}
+# Loading the Data
+
+library(foreign)
+bilateralData <- read.dta(here("data", "servicesdataset 2.dta"))
+```
+
+
+```{r}
+# Select SER sector
+
+TSPdata <- bilateralData[bilateralData$sector == "TSP",]
+```
+
+
+```{r}
+head(TSPdata)
+```
+
+
+# Descriptive Statistics
+
+```{r}
+# Select the variables of interest and exclude rows where trade equals zero
+TSPdataDS <- TSPdata %>%
+  select(trade, dist, gdp_imp, gdp_exp, contig, comlang_off, comcol, colony, etcr_exp, etcr_imp)
+
+```
+
+
+```{r}
+TSPdataDS <- TSPdataDS %>%
+  filter_at(vars("trade", "dist", "gdp_imp", "gdp_exp"),
+            all_vars(. != 0))
+
+```
+
+
+```{r}
+# Generate the summary statistics using stargazer
+stargazer(TSPdataDS, type = "text",
+          title = "Descriptive Statistics of Selected Variables",
+          digits = 2,
+          summary.stat = c("n", "mean", "sd", "min", "max"),
+          header = FALSE)
+
+```
+
+
+```{r}
+# Standardize GDP values (dividing by 1,000,000) and adjust variable names 
+TSPdataDS_adj <- TSPdataDS %>%
+  mutate(
+    gdp_imp_M = gdp_imp / 1000000,  # Standardizing GDP of importer
+    gdp_exp_M = gdp_exp / 1000000   # Standardizing GDP of exporter
+  ) %>%
+  select(trade, dist, gdp_imp_M, gdp_exp_M, colony, contig, comlang_off, comcol)
+
+# Generate the summary statistics using stargazer
+stargazer(TSPdataDS_adj, type = "html",
+          title = "Descriptive Statistics",
+          digits = 2,
+          summary.stat = c("n", "mean", "sd", "min", "max"), 
+          header = FALSE)
+          
+
+```
+
+
+```{r}
+ stargazer(TSPdataDS_adj, type = "html", title = "Descriptive Statistics", align = TRUE,
+       column.labels = c("Total Electricity"),
+        out = "TSPdata_adj.html")
+```
+
+
+```{r}
+# Filter data for the year 2005 and non-zero trade
+non_zero_trade <- TSPdata %>%
+  filter(year == 2005, trade > 0)
+
+# Standardize the order of country pairs and remove duplicates
+unique_country_pairs <- non_zero_trade %>%
+  mutate(
+    sorted_imp = pmin(imp, exp),
+    sorted_exp = pmax(imp, exp)
+  ) %>%
+  distinct(sorted_imp, sorted_exp)
+
+# Count unique country pairs
+number_country_pairs <- nrow(unique_country_pairs)
+
+# Count unique countries involved in trade
+countries_trading <- unique(c(unique_country_pairs$sorted_imp, unique_country_pairs$sorted_exp))
+number_countries_trading <- length(countries_trading)
+
+# Calculate the share of countries trading Transport Services
+total_countries <- length(unique(c(TSPdata$imp, TSPdata$exp)))  
+share_trading_transport <- number_countries_trading / total_countries * 100
+
+# Display the results
+cat("Number of countries trading in 2005:", number_countries_trading, "\n")
+cat("Number of country pairs trading in 2005:", number_country_pairs, "\n")
+cat("Share of countries trading Transport Services in 2005:", share_trading_transport, "%\n")
+
+
+```
+# Correlation
+```{r}
+# Filter the data to include only rows where trade is not equal zero
+TSP_correlation <- TSPdataDS %>%
+  select(trade, dist, gdp_exp, gdp_imp) 
+
+# Calculate the correlation matrix for the selected variables
+TSP_correlation <- cor(TSP_correlation, use = "complete.obs")
+
+# Use stargazer to format and output the correlation matrix
+stargazer(TSP_correlation, type = "text", title = "Correlation Matrix of Trade Variables")
+
+```
+
+# Graphical Analysis
+
+```{r}
+# Create a new variable for the log
+TSPdataDS_plot1 <- TSPdataDS %>%
+  mutate(log_gdp_combined = log(gdp_exp * gdp_imp),
+         log_trade = log(trade),
+         log_distance = log(dist),
+         log_gdp_imp = log(gdp_imp),
+         log_gdp_exp = log(gdp_exp))
+```
+
+## Scatter Plot and Line of best for trade versus distance
+
+```{r}
+# Adjusting plot themes to change axis titles and legend text size
+custom_theme <- function() {
+  theme_minimal() +
+    theme(
+      plot.title = element_text(size = 10),
+      axis.title = element_text(size = 10),
+      legend.text = element_text(size = 10)
+    )
+}
+
+# Define colors for contiguity and official language
+contiguity_colors <- c("red", "blue")  
+language_colors <- c("red", "blue")
+```
+
+```{r}
+# Plotting Trade vs Distance with a linear regression fit line
+Trade_and_Distance_scatter_plot <- ggplot(TSPdataDS_plot1, aes(x = log_distance, y = log_trade)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +  
+  labs(title = "Scatter Plot Log For Trade vs Log Distance", x = "Log (Distance)", y = "Log (Trade)") +
+  theme_classic()
+
+# Display the plot
+print(Trade_and_Distance_scatter_plot)
+
+```
+
+```{r}
+ggsave("Trade_and_Distance_scatter_plot.png", plot = Trade_and_Distance_scatter_plot, width = 8, height = 6, dpi = 300)
+```
+
+
+
+## Scatter Plot and Line of best for trade versus Combined GDP
+```{r}
+Trade_and_combinedGDP_scatter_plot <- ggplot(TSPdataDS_plot1, aes(x = log_gdp_combined, y = log_trade)) +
+  geom_point() +  
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +  
+  labs(title = "Scatter Plot For Log Trade vs Log Combined GDP", x = "Log (Combined GDP)", y = "Log (Trade)") +
+  theme_classic()
+
+# Display the plot
+print(Trade_and_combinedGDP_scatter_plot)
+```
+
+
+```{r}
+ggsave("Trade_and_combinedGDP_scatter_plot.png", plot = Trade_and_combinedGDP_scatter_plot, width = 8, height = 6, dpi = 300)
+```
+
+
+```{r}
+Trade_and_Distance_Contiguity_scatter_plot <- ggplot(TSPdataDS_plot1, aes(x = log_distance, y = log_trade, color = factor(contig))) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  scale_color_manual(values = contiguity_colors) +
+  labs(title = "Scatter Plot of Log(Trade) vs Log(Distance) by Contiguity", 
+       x = "Log(Distance)", 
+       y = "Log(Trade)") +
+   theme_classic()
+
+# Print the plot
+print(Trade_and_Distance_Contiguity_scatter_plot)
+
+
+
+```
+
+```{r}
+ggsave("Trade_and_Distance_Contiguity_scatter_plot.png", plot = Trade_and_Distance_Contiguity_scatter_plot, width = 8, height = 6, dpi = 300)
+```
+
+
+
+```{r}
+Trade_and_combinedGDP_Contiguity_scatter_plot <- ggplot(TSPdataDS_plot1, aes(x = log_gdp_combined, y = log_trade, color = factor(contig))) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm", se = FALSE) +  
+  scale_color_manual(values = contiguity_colors) +
+  labs(title = "Scatter Plot for Log(Trade) vs Log(Distance) by Contiguity", 
+       x = "Log(Combined GDP)", 
+       y = "Log(Trade)") +
+    theme_classic()
+
+# Print the plot
+print(Trade_and_combinedGDP_Contiguity_scatter_plot)
+
+```
+
+```{r}
+ggsave("Trade_and_combinedGDP_Contiguity_scatter_plot.png", plot = Trade_and_combinedGDP_Contiguity_scatter_plot, width = 8, height = 6, dpi = 300)
+```
+
+
+## Clustering by common official language
+```{r}
+# Plot 5: Trade vs Distance, clustering by common official language
+
+Trade_and_Distance_OffLan_scatter_plot <- ggplot(TSPdataDS_plot1, aes(x = log_distance, y = log_trade, color = factor(comlang_off))) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm", se = FALSE) + 
+  scale_color_manual(values = language_colors) +
+  labs(title = "Log(Trade) vs Log(Distance) by Official Language", 
+       x = "Log(Distance)", 
+       y = "Log(Trade)") +
+    theme_classic()
+
+# Print the plot
+print(Trade_and_Distance_OffLan_scatter_plot)
+
+```
+
+```{r}
+ggsave("Trade_and_Distance_OffLan_scatter_plot.png", plot = Trade_and_Distance_OffLan_scatter_plot, width = 8, height = 6, dpi = 300)
+```
+
+
+
+```{r}
+# Plot 6: GDP vs Trade, clustering by common official language
+
+Trade_and_CombinedGDP_OffLan_scatter_plot <- ggplot(TSPdataDS_plot1, aes(x = log_gdp_combined, y = trade, color = factor(contig))) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm", se = FALSE) + 
+  scale_color_manual(values = language_colors) +
+  labs(title = "Trade vs Log(Combined GDP) by Common Language", x = "Log(Combined GDP)", y = "Log(Trade)") +
+  theme_classic()
+
+print(Trade_and_CombinedGDP_OffLan_scatter_plot)
+
+# Save Plot 4
+#ggsave(filename = here("data", "viz", "plot4_contiguity_gdp.jpg"), plot = p4, width = 8, height = 6)
+```
+
+```{r}
+ggsave("Trade_and_CombinedGDP_OffLan_scatter_plot.png", plot = Trade_and_CombinedGDP_OffLan_scatter_plot, width = 8, height = 6, dpi = 300)
+```
+
+
+
+```{r}
+# Creating a correlation matrix
+cor_matrix <- TSPdataDS_plot1 %>%
+  select(log_trade, log_distance, log_gdp_combined) %>%
+  cor()
+
+print(cor_matrix)
+
+```
+```{r}
+# Save the correlation matrix as a CSV file
+write.csv(cor_matrix, file = "correlation_matrix.csv")
+```
+
+
+```{r}
+# Save the correlation matrix as a text file
+write.table(cor_matrix, file = "correlation_matrix.txt", sep = "\t", row.names = TRUE)
+```
+
+
+# Estimating The Intuitive Gravity Model
+```{r}
+# Data Cleaning and Transformation
+
+TSPdataDS_Reg <- TSPdataDS_plot1 %>%
+  filter(!is.na(log_trade) & !is.na(log_gdp_imp) & !is.na(log_gdp_exp) & !is.na(log_distance))
+
+# Fit the linear model
+model1 <- lm(log_trade ~ log_gdp_imp + log_gdp_exp + log_distance + contig + comlang_off + colony, data = TSPdataDS_Reg)
+
+summary(model1)
+
+```
+
+
+```{r}
+# Display the model coefficients with robust standard errors
+TSPdataDS_Reg$log_distance <- as.factor(TSPdataDS_Reg$log_distance)
+
+rob_se <- vcovHC(model1, type = "HC1", cluster = ~log_distance)
+
+
+# Print the robust results
+print(rob_se)
+
+model2 <- coeftest(model1, vcov. = rob_se)
+
+```
+
+
+```{r}
+# stargazer to format result
+stargazer(model1, model2, type = "text",
+          title = "Regression Results for Trade",
+          column.labels = c("Log(Trade) (SE)", "Log(Trade) (RSE)"),
+          dep.var.labels = "",
+          covariate.labels = c("Log(Imports)", "Log(Exports)", "Log(Distance)", "Contiguity", "Common Language (Official)", "Colony", "Intercept"),
+          digits = 4,
+          out = "Regression_Results_Question_3.html" )
+
+```
+
+## F-test
+```{r}
+# Test the joint hypothesis for Dichotomous variable
+f_test_1 <- linearHypothesis(model1, 
+                               c("contig = 0", "comlang_off = 0"),
+                               test = "F")
+
+print(f_test_1)
+```
+
+```{r}
+# Test for GDP close to unity
+f_test_2 <- linearHypothesis(model1, 
+                               c("log_gdp_exp = 1", "log_gdp_imp = 1"),
+                               test = "F")
+
+print(f_test_2)
+
+```
+
+
+```{r}
+# Run the joint hypothesis test for the dichotomous variables
+F_test_new <- linearHypothesis(model1, c("contig = 0", "comlang_off = 0", "colony = 0"), vcov = rob_se)
+
+print(F_test_new)
+```
+
+# Creating an OECD dummy variables, run the Augmented Gravity Model, and Analyse Trade Pattern OECD members.
+## Creating the OECD Dummy Variables
+```{r}
+TSPdataDS_OECD <- TSPdataDS_Reg %>%
+  mutate(OECD_pair = ifelse(!is.na(etcr_exp) & !is.na(etcr_imp), 1, 0))
+```
+
+
+## Scatter Plot for Trade and Distance by OECD Membership
+```{r}
+Trade_and_Distance_OECD_Pair_Scatter_Plot <- ggplot(TSPdataDS_OECD, aes(x = log(dist), y = log(trade), color = factor(OECD_pair))) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(title = "Trade vs. Distance by OECD Membership",
+       x = "Log(Distance)", y = "Log(Trade)", color = "OECD Pair") +
+  scale_color_manual(labels = c("Non-OECD Pair", "OECD Pair"), values = c("red", "blue")) +
+  theme_classic()
+```
+
+```{r}
+print(Trade_and_Distance_OECD_Pair_Scatter_Plot)
+```
+
+
+
+```{r}
+ggsave("Trade_and_Distance_OECD_Pair_Scatter_Plot.png", plot = Trade_and_Distance_OECD_Pair_Scatter_Plot, width = 8, height = 6, dpi = 300)
+```
+
+
+## Estimate The Augmented Gravity Model with OECD Dummy
+
+```{r}
+model_oecd <- lm(log(trade) ~ log(gdp_imp) + log(gdp_exp) + log(dist) + contig + comlang_off + colony + OECD_pair, data = TSPdataDS_OECD)
+
+summary(model_oecd)
+```
+
+
+```{r}
+# Calculate robust standard errors, clustering by 'dist' transformed into a factor
+
+TSPdataDS_OECD$log_dist <- as.factor(TSPdataDS_OECD$log_dist)
+rob_se_OECD <- vcovHC(model_oecd, type = "HC1", cluster = ~log_dist)
+
+```
+
+
+```{r}
+# Model with rebust standard error
+model_oecd_rob <- coeftest(model_oecd, vcov. = rob_se_OECD)
+
+```
+
+```{r}
+print(model_oecd_rob)
+```
+
+```{r}
+stargazer(model_oecd, model_oecd_rob, type = "html",
+          title = "Regresion Results for Trade (OECD Members)",
+          column.labels = c("lOg(Trade) (SE)", "Log(Trade) (RSE)"),
+          dep.var.labels = "Log(Trade)",
+          covariate.labels = c("Log(GDP Importer)", "Log(GDP Exporter)", "Log(Distance)", 
+                               "Contiguity", "CommLang(Official)", "Colony", "OECD Membership"),
+          digits = 4, out = "model_oecd_Question_4.html")
+
+```
+
+# Structural Gravity Model With Fixed Effects For Both The Importer and Exporter
+## Set Up the Structural Gravity Model
+```{r}
+TSPdataDS_Struc <- TSPdataDS_OECD [TSPdataDS_OECD$trade!=0 & TSPdataDS_OECD$dist != 0,]
+
+```
+
+```{r}
+library(lfe)
+
+# Estimate the structural gravity model with importer and exporter fixed effects
+model_structural <- felm(log(trade) ~ log(dist) + contig + comlang_off + OECD_pair | gdp_imp + gdp_exp, data = TSPdataDS_Struc)
+```
+
+```{r}
+# Display summary results
+summary(model_structural)
+```
+
+## Structural Model without OECD Dummy
+```{r}
+model_no_oecd <- felm(log(trade) ~ log(dist) + contig + comlang_off | gdp_imp + gdp_exp, data = TSPdataDS_OECD)
+
+summary(model_no_oecd)
+```
+
+```{r}
+model_no_oecd_new <- felm(log(trade) ~ log(dist) + contig + comlang_off | gdp_imp + gdp_exp, data = TSPdataDS_Struc)
+
+summary(model_no_oecd)
+```
+
+```{r}
+# Saving with Stargazer
+stargazer(model_structural, model_no_oecd, type = "html",
+          title = "Regression Results for Trade",
+          column.labels = c("OECD", "NO-OECD"),
+          dep.var.labels = "Log(Trade)",
+          covariate.labels = c("Log(Distance)", "Contiguity", "Common Language (Official)", "Colony","OECD Membership"),
+          digits = 4,
+          out = "Regression_Results_OECD_structual_new.html" )
+```
+
+```{r}
+texreg::screenreg(
+list(model_structural, model_no_oecd),
+omit.coef = c('factor'),
+include.ci = FALSE,
+caption = '',
+custom.note = "Note: robust standard errors",
+custom.gof.rows = list("Country Imp/Exp FE" = c("YES", "YES"))
+)
+```
+
+
+```{r}
+texreg::screenreg(
+list(model2, model_oecd_rob, model_structural, model_no_oecd),
+omit.coef = c('factor'),
+include.ci = FALSE,
+caption = '',
+custom.note = "Note: robust standard errors",
+custom.gof.rows = list("Country Imp/Exp FE" = c("NO", "NO", "YES", "YES"))
+)
+
+```t_1_Gravity_Model.Rmd…]()
+
