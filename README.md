@@ -226,3 +226,29 @@ In the structural model without the OECD dummy, the effect of distance on trade 
 More Pronounced Trade Barrier: Distance acts as a stronger trade barrier in the structural model, implying that once we control for unobserved country-specific characteristics (via importer and exporter fixed effects), the logistical and cost-related challenges associated with distance become more apparent.
 Influence of Fixed Effects: The fixed effects control for country-specific factors like economic size, infrastructure, and institutional quality, which may otherwise obscure the true effect of distance. By isolating these factors, the structural model suggests that distance is a more significant determinant of trade than previously estimated.
 
+
+## Key Challenges in Estimating the Effect of OECD Membership
+
+### Endogeneity and Reverse Causality
+
+OECD membership may be endogenous to trade volume. Countries with higher trade openness, economic size, or stability are more likely to join the OECD, creating a reverse causality problem. Essentially, high trade levels could be driving OECD membership rather than OECD membership driving trade. This can lead to biased estimates if not properly addressed, as the model may capture a two-way relationship rather than the pure effect of OECD membership on trade.
+
+### Selection Bias
+
+Countries are not randomly assigned to OECD membership, they self-select based on economic and political criteria. OECD countries tend to have higher standards of governance, economic stability, and infrastructure, which are also factors that facilitate trade. This selection bias means that any observed increase in trade associated with OECD membership may not be due to OECD policies themselves but rather to pre-existing characteristics that make countries both more likely to join the OECD and more capable of engaging in international trade.
+
+### Omitted Variable Bias
+
+There may be unobserved factors that influence both trade and the likelihood of OECD membership, such as institutional quality, regulatory standards, or governance stability. If these factors are not controlled for, they can bias the estimate of OECD membership's impact on trade. If omitted, these variables could make it seem that OECD membership has a stronger or weaker effect on trade than it actually does, as their influence is inaccurately attributed to the OECD variable.
+
+### Limited Temporal Variation
+OECD membership status does not change frequently, meaning there is limited within-country variation in membership over time. This makes it difficult to use methods that rely on changes in OECD status to identify the effect of membership on trade. Without sufficient time-based variation, it is challenging to disentangle the effect of OECD membership from other country characteristics. Limited variation reduces the model's ability to identify a causal relationship.
+
+## Can We Draw a Causal Effect?
+
+I cannot confidently draw a causal effect of OECD membership on trade from these gravity models alone, primarily due to the following reasons:
+These models primarily reveal correlations between OECD membership and trade, not causation. Even if OECD membership is associated with higher trade, this does not prove that OECD membership directly causes the increase in trade. Other unobserved factors might be driving both.
+
+Establishing causation requires an instrumental variable that is correlated with OECD membership but does not directly affect trade. However, it is challenging to find such an instrument, as most factors influencing OECD membership (such as economic openness) also directly impact trade. Without a valid IV, causality remains untested.
+The self-selection process for OECD membership means that member countries may already possess characteristics conducive to trade. This makes it difficult to separate the effect of OECD membership itself from the effect of these pre-existing characteristics, which likely contribute to both trade volume and OECD membership.
+
